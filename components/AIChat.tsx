@@ -33,54 +33,51 @@ export default function AIChat() {
     const userMsg = input.trim();
     setInput('');
     
-    // 1. User message ko screen par turant dikhao
+    // User ka message screen par dikhana
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
     setIsLoading(true);
 
-    // 2. Bot ke aane wale response ke liye ek khaali message placeholder banao
+    // Bot ke message ke liye placeholder
     const botMessageId = (Date.now() + 1).toString();
-    setMessages(prev => [...prev, { id: botMessageId, role: 'model', text: '' }]);
+    setMessages(prev => [...prev, { id: botMessageId, role: 'model', text: 'Thinking...' }]);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is missing!");
+      }
+
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const todayData = healthHistory[healthHistory.length - 1] || { sleep: 0, water: 0, studyHours: 0 };
       const pendingTasks = tasks.filter(t => !t.completed).length;
       
-      // OPTIMIZED SYSTEM PROMPT: Taaki AI sirf profile me na ghusa rahe
-      const systemInstruction = `You are a helpful, smart, and friendly Study & Health Assistant. 
-      The user's name is ${profile.name}. Their academic target is ${profile.target}.
-      Current Stats: ${todayData.sleep}h sleep, ${todayData.water} glasses of water, ${todayData.studyHours}h studied. Pending tasks: ${pendingTasks}.
-      
-      CRITICAL INSTRUCTION: If the user asks general, casual, or non-academic questions (e.g., jokes, general knowledge, coding, or casual chat), answer them completely and naturally like a friend. Do not forcefully bring up their study or health stats unless it is relevant to their question. Keep your answers natural, encouraging, and clear.`;
+      // STRICT INSTRUCTION: Faltu ka profile data har answer me ghusana ban hai
+      const systemInstruction = `You are a smart, conversational AI Assistant for ${profile.name}.
+      CRITICAL RULE: Answer the user's question directly, accurately, and naturally. Do NOT mention or talk about their target (${profile.target}), sleep (${todayData.sleep}h), water, or pending tasks (${pendingTasks}) unless they explicitly ask you a question regarding their health, studies, or daily schedule. Keep your tone helpful and friendly.`;
 
-      // FAST STREAMING CALL: generateContent hata kar generateContentStream lagaya
-      const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
+      // Stable model call
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
         contents: userMsg,
         config: {
-          systemInstruction,
-          temperature: 0.7, // Isse answers alag-alag aur creative aayenge
-          maxOutputTokens: 600,
+          systemInstruction: systemInstruction,
+          temperature: 0.7, // variety ke liye
         }
       });
 
-      let fullText = '';
-      
-      // Ek ek karke jo text aa raha hai use screen par update karo (ChatGPT jaisa feel)
-      for await (const chunk of responseStream) {
-        if (chunk.text) {
-          fullText += chunk.text;
-          setMessages(prev => 
-            prev.map(msg => msg.id === botMessageId ? { ...msg, text: fullText } : msg)
-          );
-        }
+      if (response.text) {
+        setMessages(prev => 
+          prev.map(msg => msg.id === botMessageId ? { ...msg, text: response.text as string } : msg)
+        );
+      } else {
+        throw new Error("Gemini returned empty text");
       }
 
     } catch (error) {
-      console.error("AI Chat Error:", error);
+      console.error("AI Chat Error Detailed:", error);
       setMessages(prev => 
-        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Sorry, I'm having trouble connecting right now. Please try again later." } : msg)
+        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Error aa raha hai bhai. Ek baar check karo ki Vercel par 'NEXT_PUBLIC_GEMINI_API_KEY' variable sahi se add kiya hai ya nahi." } : msg)
       );
     } finally {
       setIsLoading(false);
@@ -95,7 +92,7 @@ export default function AIChat() {
         </div>
         <div>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Gemini (Superfast Mode)</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Gemini</p>
         </div>
       </div>
 
@@ -113,7 +110,7 @@ export default function AIChat() {
                   ? 'bg-blue-600 text-white rounded-tr-none' 
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none'
               }`}>
-                {msg.text || (isLoading && msg.id === messages[messages.length - 1].id ? "Thinking..." : "")}
+                {msg.text}
               </div>
             </div>
           </div>
@@ -127,7 +124,7 @@ export default function AIChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask for study tips, health advice, or anything else..."
+            placeholder="Ask anything..."
             className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
             disabled={isLoading}
           />
