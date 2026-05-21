@@ -12,7 +12,7 @@ type Message = {
 export default function AIChat() {
   const { profile, healthHistory, tasks } = useAppContext();
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'model', text: `Hi ${profile.name}! I'm your AI Study & Health Assistant. How can I help you today?` }
+    { id: '1', role: 'model', text: `Hi ${profile.name}! I am your AI Assistant. You can ask me to analyze your dashboard, give performance tips, or ask me absolutely anything about the world (history, science, coding, etc.)!` }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -33,11 +33,9 @@ export default function AIChat() {
     const userMsg = input.trim();
     setInput('');
     
-    // User message screen par turant dikhao
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
     setIsLoading(true);
 
-    // Bot ke response ke liye temporary placeholder state
     const botMessageId = (Date.now() + 1).toString();
     setMessages(prev => [...prev, { id: botMessageId, role: 'model', text: 'Thinking...' }]);
 
@@ -48,25 +46,39 @@ export default function AIChat() {
       }
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
-      const todayData = healthHistory[healthHistory.length - 1] || { sleep: 0, water: 0, studyHours: 0 };
-      const pendingTasks = tasks.filter(t => !t.completed).length;
-      
-      // Strict detailed system prompt taaki lambe aur ache explanations de sake bina data force kiye
-      const systemInstruction = `You are a professional, detailed, and highly intelligent AI Career & Study Assistant for ${profile.name}.
-      
-      CORE RULES:
-      1. Provide comprehensive, thorough, and highly detailed actionable answers. Never give single-line or incomplete cut-off answers.
-      2. If the user asks about cracking jobs (like Data Analyst in 2026), list down exact roadmaps, skills needed (SQL, Python, PowerBI/Tableau), portfolio strategies, and resume tips in detail.
-      3. Do NOT talk about the user's sleep data (${todayData.sleep}h), water intake, or basic daily stats unless they specifically ask you about their daily health or timeline schedule. Keep the conversation contextually relevant to what they ask.`;
 
-      // gemini-2.5-flash standard non-preview model call
+      // Live Dashboard Data Calculations
+      const totalLogsCount = healthHistory.length;
+      const todayData = healthHistory[healthHistory.length - 1] || { sleep: 0, water: 0, studyHours: 0 };
+      const avgSleep = totalLogsCount > 0 ? (healthHistory.reduce((acc, curr) => acc + (curr.sleep || 0), 0) / totalLogsCount).toFixed(1) : 0;
+      const avgWater = totalLogsCount > 0 ? (healthHistory.reduce((acc, curr) => acc + (curr.water || 0), 0) / totalLogsCount).toFixed(1) : 0;
+      const avgStudy = totalLogsCount > 0 ? (healthHistory.reduce((acc, curr) => acc + (curr.studyHours || 0), 0) / totalLogsCount).toFixed(1) : 0;
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(t => t.completed).length;
+      const pendingTasks = totalTasks - completedTasks;
+
+      // MULTI-PURPOSE SYSTEM INSTRUCTION (Dashboard + Global Knowledge)
+      const systemInstruction = `You are an advanced, unrestricted, and highly intelligent AI Assistant built for ${profile.name} (Academic Target: ${profile.target}).
+
+      YOUR KNOWLEDGE BASE & CAPABILITIES:
+      1. GLOBAL KNOWLEDGE: You have full access to general knowledge, history (e.g., Akbar, Mughals, world history), science, coding, literature, and general chat. If the user asks about these external topics, answer them with high accuracy, deep details, and clear explanations.
+      2. DASHBOARD DATA: You have background access to the user's dashboard data:
+         - Sleep: Today ${todayData.sleep}h, Avg ${avgSleep}h
+         - Water: Today ${todayData.water} glasses, Avg ${avgWater} glasses
+         - Study: Today ${todayData.studyHours}h, Avg ${avgStudy}h
+         - Tasks: Total ${totalTasks}, Pending ${pendingTasks}, Completed ${completedTasks}
+
+      CRITICAL HANDLING RULES:
+      - If the user asks general or extra questions (e.g., history, science, coding, advice), answer them directly, thoroughly, and comprehensively. DO NOT mention their dashboard data, GPA, sleep, or tasks in these answers. Keep it strictly relevant to their question.
+      - ONLY analyze or bring up the dashboard stats/visuals if the user explicitly asks about their performance, stats, tracker logs, or tips regarding their habits.`;
+
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: userMsg,
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.7,
-          maxOutputTokens: 2048, // Isko bada kiya taaki lamba answer cut na ho
+          maxOutputTokens: 2048,
         }
       });
 
@@ -81,7 +93,7 @@ export default function AIChat() {
     } catch (error) {
       console.error("AI Error:", error);
       setMessages(prev => 
-        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Kayi baar token limit ya connectivity issue hota hai. Please try again." } : msg)
+        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "An error occurred. Please try again." } : msg)
       );
     } finally {
       setIsLoading(false);
@@ -95,8 +107,8 @@ export default function AIChat() {
           <Bot size={24} />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Gemini</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Smart AI Assistant</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Connected to Dashboard & Global Knowledge</p>
         </div>
       </div>
 
@@ -128,7 +140,7 @@ export default function AIChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask anything..."
+            placeholder="Ask anything (Dashboard performance or general topics)..."
             className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
             disabled={isLoading}
           />
