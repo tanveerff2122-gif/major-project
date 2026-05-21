@@ -33,36 +33,40 @@ export default function AIChat() {
     const userMsg = input.trim();
     setInput('');
     
-    // User ka message screen par dikhana
+    // User message screen par turant dikhao
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
     setIsLoading(true);
 
-    // Bot ke message ke liye placeholder
+    // Bot ke response ke liye temporary placeholder state
     const botMessageId = (Date.now() + 1).toString();
     setMessages(prev => [...prev, { id: botMessageId, role: 'model', text: 'Thinking...' }]);
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is missing!");
+        throw new Error("API Key is missing!");
       }
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
-      
       const todayData = healthHistory[healthHistory.length - 1] || { sleep: 0, water: 0, studyHours: 0 };
       const pendingTasks = tasks.filter(t => !t.completed).length;
       
-      // STRICT INSTRUCTION: Faltu ka profile data har answer me ghusana ban hai
-      const systemInstruction = `You are a smart, conversational AI Assistant for ${profile.name}.
-      CRITICAL RULE: Answer the user's question directly, accurately, and naturally. Do NOT mention or talk about their target (${profile.target}), sleep (${todayData.sleep}h), water, or pending tasks (${pendingTasks}) unless they explicitly ask you a question regarding their health, studies, or daily schedule. Keep your tone helpful and friendly.`;
+      // Strict detailed system prompt taaki lambe aur ache explanations de sake bina data force kiye
+      const systemInstruction = `You are a professional, detailed, and highly intelligent AI Career & Study Assistant for ${profile.name}.
+      
+      CORE RULES:
+      1. Provide comprehensive, thorough, and highly detailed actionable answers. Never give single-line or incomplete cut-off answers.
+      2. If the user asks about cracking jobs (like Data Analyst in 2026), list down exact roadmaps, skills needed (SQL, Python, PowerBI/Tableau), portfolio strategies, and resume tips in detail.
+      3. Do NOT talk about the user's sleep data (${todayData.sleep}h), water intake, or basic daily stats unless they specifically ask you about their daily health or timeline schedule. Keep the conversation contextually relevant to what they ask.`;
 
-      // Stable model call
+      // gemini-2.5-flash standard non-preview model call
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: userMsg,
         config: {
           systemInstruction: systemInstruction,
-          temperature: 0.7, // variety ke liye
+          temperature: 0.7,
+          maxOutputTokens: 2048, // Isko bada kiya taaki lamba answer cut na ho
         }
       });
 
@@ -71,13 +75,13 @@ export default function AIChat() {
           prev.map(msg => msg.id === botMessageId ? { ...msg, text: response.text as string } : msg)
         );
       } else {
-        throw new Error("Gemini returned empty text");
+        throw new Error("No text returned");
       }
 
     } catch (error) {
-      console.error("AI Chat Error Detailed:", error);
+      console.error("AI Error:", error);
       setMessages(prev => 
-        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Error aa raha hai bhai. Ek baar check karo ki Vercel par 'NEXT_PUBLIC_GEMINI_API_KEY' variable sahi se add kiya hai ya nahi." } : msg)
+        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Kayi baar token limit ya connectivity issue hota hai. Please try again." } : msg)
       );
     } finally {
       setIsLoading(false);
@@ -105,7 +109,7 @@ export default function AIChat() {
               }`}>
                 {msg.role === 'user' ? <User size={16} className="text-gray-600 dark:text-gray-300" /> : <Bot size={16} />}
               </div>
-              <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap ${
+              <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed ${
                 msg.role === 'user' 
                   ? 'bg-blue-600 text-white rounded-tr-none' 
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none'
