@@ -32,36 +32,56 @@ export default function AIChat() {
 
     const userMsg = input.trim();
     setInput('');
+    
+    // 1. User message ko screen par turant dikhao
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
     setIsLoading(true);
+
+    // 2. Bot ke aane wale response ke liye ek khaali message placeholder banao
+    const botMessageId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, { id: botMessageId, role: 'model', text: '' }]);
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
       
-      // Provide context to the AI
       const todayData = healthHistory[healthHistory.length - 1] || { sleep: 0, water: 0, studyHours: 0 };
       const pendingTasks = tasks.filter(t => !t.completed).length;
       
-      const systemInstruction = `You are a helpful Study & Health Assistant. 
+      // OPTIMIZED SYSTEM PROMPT: Taaki AI sirf profile me na ghusa rahe
+      const systemInstruction = `You are a helpful, smart, and friendly Study & Health Assistant. 
       The user's name is ${profile.name}. Their academic target is ${profile.target}.
-      Today's stats: ${todayData.sleep}h sleep, ${todayData.water} glasses of water, ${todayData.studyHours}h studied.
-      They have ${pendingTasks} pending tasks.
-      Keep your answers concise, encouraging, and focused on productivity and wellness.`;
+      Current Stats: ${todayData.sleep}h sleep, ${todayData.water} glasses of water, ${todayData.studyHours}h studied. Pending tasks: ${pendingTasks}.
+      
+      CRITICAL INSTRUCTION: If the user asks general, casual, or non-academic questions (e.g., jokes, general knowledge, coding, or casual chat), answer them completely and naturally like a friend. Do not forcefully bring up their study or health stats unless it is relevant to their question. Keep your answers natural, encouraging, and clear.`;
 
-      const response = await ai.models.generateContent({
+      // FAST STREAMING CALL: generateContent hata kar generateContentStream lagaya
+      const responseStream = await ai.models.generateContentStream({
         model: 'gemini-3-flash-preview',
         contents: userMsg,
         config: {
           systemInstruction,
+          temperature: 0.7, // Isse answers alag-alag aur creative aayenge
+          maxOutputTokens: 600,
         }
       });
 
-      if (response.text) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text as string }]);
+      let fullText = '';
+      
+      // Ek ek karke jo text aa raha hai use screen par update karo (ChatGPT jaisa feel)
+      for await (const chunk of responseStream) {
+        if (chunk.text) {
+          fullText += chunk.text;
+          setMessages(prev => 
+            prev.map(msg => msg.id === botMessageId ? { ...msg, text: fullText } : msg)
+          );
+        }
       }
+
     } catch (error) {
       console.error("AI Chat Error:", error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "Sorry, I'm having trouble connecting right now. Please try again later." }]);
+      setMessages(prev => 
+        prev.map(msg => msg.id === botMessageId ? { ...msg, text: "Sorry, I'm having trouble connecting right now. Please try again later." } : msg)
+      );
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +95,7 @@ export default function AIChat() {
         </div>
         <div>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">AI Assistant</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Gemini</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Powered by Gemini (Superfast Mode)</p>
         </div>
       </div>
 
@@ -88,30 +108,16 @@ export default function AIChat() {
               }`}>
                 {msg.role === 'user' ? <User size={16} className="text-gray-600 dark:text-gray-300" /> : <Bot size={16} />}
               </div>
-              <div className={`p-3 rounded-2xl text-sm ${
+              <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap ${
                 msg.role === 'user' 
                   ? 'bg-blue-600 text-white rounded-tr-none' 
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-tl-none'
               }`}>
-                {msg.text}
+                {msg.text || (isLoading && msg.id === messages[messages.length - 1].id ? "Thinking..." : "")}
               </div>
             </div>
           </div>
         ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="flex max-w-[80%] flex-row">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 mr-3 flex items-center justify-center">
-                <Bot size={16} />
-              </div>
-              <div className="p-3 rounded-2xl bg-gray-100 dark:bg-gray-700 rounded-tl-none flex items-center space-x-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-            </div>
-          </div>
-        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -121,7 +127,7 @@ export default function AIChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask for study tips, health advice..."
+            placeholder="Ask for study tips, health advice, or anything else..."
             className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
             disabled={isLoading}
           />
